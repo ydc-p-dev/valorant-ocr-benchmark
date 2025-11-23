@@ -67,7 +67,3 @@ python .\valorant_killfeed_tracker.py
 
 **License / Attribution**
 - Personal project. Add your preferred license if you plan to share.
-
----
-
-If you want, I can (A) add the README to git, commit and push (I will attempt a push and report any auth/remote issues), or (B) also add a small `requirements.txt` and a `.gitignore`. Which do you prefer?
