@@ -1,66 +1,149 @@
-**Project**: Valorant Killfeed OCR Overlay
+# Valorant Overlay Kill/Death Tracker
 
-- **Purpose**: Capture Valorant killfeed entries from two screen regions, detect green kill/death boxes, OCR player names, and write a simple overlay stats file `overlay_stats.txt` with counts.
+## Kill/Death Detection Demo:
+https://drive.google.com/file/d/1NUj_Ucyr-1mkolp1d6s4uZM7t7HWL4Ad/view?usp=drive_link
 
-**Quick Start**
-- Install dependencies (recommended in a virtualenv):
+![Detection Preview](Detection.gif)
 
-```powershell
+## 🎯 Overview
+This project is a **real‑time Valorant kill/death tracker** that uses:
+- **Screen capture (MSS)**
+- **Image processing (OpenCV)**
+- **OCR text recognition (Tesseract)**
+
+It reads the killfeed directly from the player’s screen, detects your name in kill/death events, and updates a simple **overlay file (overlay_stats.txt)** that streamers or apps like **OBS** can display.
+
+---
+
+## 🧠 Why This Project Exists
+The Valorant API does **not** allow real‑time killfeed access during gameplay.  
+Most solutions rely on:
+- External hardware
+- Paid game overlays
+- Fragile memory-reading hacks
+
+This project solves the problem by using **computer vision + OCR** to detect green killfeed boxes on the screen in real time.
+
+### ✔ What It Achieves
+- Detects **kills** when your name appears on the killfeed
+- Detects **deaths** when your name appears on the opposing killfeed
+- Provides **accurate live stats** without external tools
+- Works **entirely locally**, fast, and lightweight
+
+---
+
+## ⚙️ Components Used
+### **1. MSS (Screen Capture)**
+Captures small regions of the screen (killfeed only) with minimal performance impact.
+
+### **2. OpenCV**
+- Detects green killfeed highlight boxes
+- Finds bounding boxes using contours
+- Extracts regions of interest to send to OCR
+
+### **3. Tesseract OCR**
+- Reads the text inside each green killfeed box
+- Cleans and filters the OCR result
+
+### **4. Python Logic**
+Ensures:
+- Duplicate events are not counted
+- Kill/death timing is respected
+- Results are stored to `overlay_stats.txt`
+
+---
+
+## 🚀 How It Works (High Level)
+1. Capture two screen regions:
+   - **Kills region** (where your kills appear)
+   - **Deaths region** (where deaths appear)
+
+2. Find green-highlighted killfeed boxes using HSV masking.
+3. Crop each detected box.
+4. Run OCR to extract player names.
+5. If the text matches your in-game name:
+   - Increase **kills** or **deaths** counter.
+6. Save results to `overlay_stats.txt`.
+7. OBS or any overlay tool reads the text file and displays it.
+
+---
+
+## 🛠 Installation
+1. Install Python 3.9+
+2. Install dependencies:
+```bash
 pip install opencv-python numpy mss pytesseract
 ```
+3. Install Tesseract OCR:  
+Download for Windows: https://github.com/tesseract-ocr/tesseract
 
-- Install Tesseract OCR (Windows):
-  - Download and install from https://github.com/tesseract-ocr/tesseract
-  - If not on PATH, uncomment and update the path near the top of `valorant_killfeed_tracker.py`:
-
+4. Edit these values in the script:
 ```python
-pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+PLAYER_NAME = "LoKee"
+```
+(Optional)
+Adjust screen regions if your resolution/layout differs.
+
+---
+
+## ▶️ Running the Program
+Simply run:
+```bash
+python valorant_killfeed_tracker.py
+```
+You will see preview windows showing the kill region, death region, and their masks.
+
+The script creates or updates:
+```
+overlay_stats.txt
+```
+which contains:
+```
+Kills: X | Deaths: Y
 ```
 
-- Run the tracker locally (not headless):
+---
 
-```powershell
-python .\valorant_killfeed_tracker.py
+## 🖥️ Using with OBS
+1. Add a **Text (GDI+)** source
+2. Choose `overlay_stats.txt`
+3. Enable **"Read from file"**
+
+Your kill/death count will now update live in your stream.
+
+---
+
+## 🔧 Tuning Settings
+These are the most important variables:
+```python
+REFRESH_DELAY = 0.7     # How often screen is scanned
+EVENT_COOLDOWN = 4.5    # Minimum time before counting another event
 ```
+Increase these if you get **duplicate kills**.
+Decrease these if it **misses some kills**.
 
-**Configuration**
-- Edit `valorant_killfeed_tracker.py` top constants:
-  - `PLAYER_NAME` — set to your in-game name (case-insensitive).
-  - `REGION_KILL` and `REGION_DEATH` — screen coordinates (top/left/width/height) of the killfeed regions for your monitor and HUD.
-  - Color thresholds (`GREEN_LOW`, `GREEN_HIGH`) and size filters (`MIN_*`) — tune if detection misses/false positives.
-  - `REFRESH_DELAY` — capture interval (seconds). Lower = more responsive, higher CPU.
+---
 
-**Tuning Tips**
-- If you miss quick multi-kills, lower `REFRESH_DELAY` and/or increase capture region height.
-- If you get duplicates/false counts, increase size thresholds or adjust `GREEN_LOW/HIGH` to better match the green hue in your HUD.
-- Tesseract OCR can be sensitive to size/contrast — see `README` section below for robust OCR ideas.
+## 🧩 Known Limitations
+- Multi-kills within 0.3 seconds can appear identical in OCR
+- Rarely misses kills when green highlight is faint
+- OCR accuracy depends on resolution/quality
 
-**OCR robustness (recommended)**
-- Upscale small crop images before OCR (makes text clearer to Tesseract).
-- Apply CLAHE and adaptive thresholding to improve contrast.
-- Use `pytesseract.image_to_data()` to read confidence scores and prefer high-confidence words.
+---
 
-**Files**
-- `valorant_killfeed_tracker.py` — main script (captures regions, detects green boxes, OCR, prints counts, writes `overlay_stats.txt`).
-- `overlay_stats.txt` — simple text file written each loop; external overlays/widgets can read this to display live stats.
+## 🗺 Roadmap / Future Additions
+- Add **multi‑kill logic** using rolling history frames
+- Add **weapon detection** from icons
+- Build a **GUI toggle app**
+- Compile into a Windows **.exe**
 
-**GIFs / Examples**
+---
 
-![gif-detection-1](Detection.gif)
+## 🤝 Contributing
+Feel free to open issues or submit pull requests.
 
-Game Play Video
+---
 
-https://drive.google.com/file/d/1ajq86u7dXsLsuj636tYWGLPYUgT2f4L3/view?usp=drive_link
+## 📄 License
+MIT License (free to use and modify).
 
-
-**Troubleshooting**
-- "No module named cv2" — install `opencv-python`.
-- Tesseract not found — ensure it is installed and `pytesseract.pytesseract.tesseract_cmd` points to the binary.
-- If the script is slow, consider increasing `REFRESH_DELAY` or offloading OCR to a background thread.
-
-**How to contribute / experiment safely**
-- Make a backup before large edits: `copy valorant_killfeed_tracker.py valorant_killfeed_tracker.py.bak`
-- Add small, reversible changes and test with short sessions.
-
-**License / Attribution**
-- Personal project. Add your preferred license if you plan to share.
