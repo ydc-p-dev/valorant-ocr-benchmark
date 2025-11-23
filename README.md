@@ -50,7 +50,7 @@ python .\valorant_killfeed_tracker.py
 
 Game Play Video
 
-https://drive.google.com/file/d/1ajq86u7dXsLsuj636tYWGLPYUgT2f4L3/view?usp=drive_link
+https://drive.google.com/file/d/1NUj_Ucyr-1mkolp1d6s4uZM7t7HWL4Ad/view?usp=drive_link
 
 
 **Troubleshooting**
