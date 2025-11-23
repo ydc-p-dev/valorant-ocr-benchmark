@@ -44,16 +44,13 @@ python .\valorant_killfeed_tracker.py
 - `valorant_killfeed_tracker.py` — main script (captures regions, detects green boxes, OCR, prints counts, writes `overlay_stats.txt`).
 - `overlay_stats.txt` — simple text file written each loop; external overlays/widgets can read this to display live stats.
 
-**Placeholders for GIFs / Examples**
+**GIFs / Examples**
 
-- Example: running tracker and detection (insert GIF here):
+![gif-detection-1](Detection.gif)
 
-![gif-detection-1](gifs/detection_run.gif)
+Game Play Video
 
-
-- Example: tuning regions (insert GIF here):
-
-![gif-tune-regions](gifs/tune_regions.gif)
+https://drive.google.com/file/d/1ajq86u7dXsLsuj636tYWGLPYUgT2f4L3/view?usp=drive_link
 
 
 **Troubleshooting**
