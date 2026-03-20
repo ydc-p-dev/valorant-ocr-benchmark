@@ -68,9 +68,9 @@ pip install opencv-python
 3. Install Tesseract OCR:  
 Download for Windows: https://github.com/tesseract-ocr/tesseract
 
-4. Edit the killfeed region in the script if needed:
+4. Edit the killfeed region in the script if needed (or pass `--killfeed-rect TOP,LEFT,WIDTH,HEIGHT` once per run). **Use a short height** so the crop is only the killfeed strip: a tall box also captures the **combat report / death recap** modal and OCR will invent bogus rows from player names there.
 ```python
-REGION_KILLFEED = {"top": 80, "left": 1300, "width": 600, "height": 380}
+REGION_KILLFEED = {"top": 80, "left": 1300, "width": 600, "height": 180}
 ```
 
 ### GPU acceleration (faster EasyOCR)
@@ -154,7 +154,7 @@ python benchmark_killfeed_ocr.py --folder shots --reference benchmark_reference.
 
 Default detector sweep is **craft only** (avoids EasyOCR DBNet trying to JIT-compile deformable conv on Windows without `CUDA_HOME` / MSVC — that spam is skipped automatically). To include **dbnet18** anyway: `--networks craft dbnet18 --force-dbnet-sweep`.
 
-**CPU vs GPU:** pass **`--cpu`** to run EasyOCR on CPU only (sets `CUDA_VISIBLE_DEVICES=-1` before loading PyTorch). On Windows, an empty `CUDA_VISIBLE_DEVICES` may still leave CUDA visible; use `--cpu` or set `CUDA_VISIBLE_DEVICES=-1` in the shell.
+**CPU vs GPU:** pass **`--cpu`** to run EasyOCR on CPU only (sets `CUDA_VISIBLE_DEVICES=-1` before loading PyTorch). Otherwise set `CUDA_VISIBLE_DEVICES=-1` in your shell if you need to hide the GPU without the flag.
 
 Copy `benchmark_reference.example.json`, rename, and list expected `(killer, victim)` per row **top-to-bottom** for each filename. Without a reference, ranking uses speed + completeness only (`--ref-weight` ignored).
 

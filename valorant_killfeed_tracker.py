@@ -86,8 +86,10 @@ def opencv_highgui_available() -> bool:
 # pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
 # --- CONFIG ---
-# One region covering the full killfeed column (tune for your resolution).
-REGION_KILLFEED = {"top": 80, "left": 1300, "width": 600, "height": 380}
+# Full-screen capture rect for the killfeed column only (MSS / crop on static images).
+# Keep HEIGHT small: a tall box pulls in the combat report / death recap modal below the strip
+# and produces bogus killer→victim rows (names from that UI). ~4 killfeed lines ≈ 140–200 px tall.
+REGION_KILLFEED = {"top": 80, "left": 1300, "width": 600, "height": 180}
 
 GREEN_LOW = np.array([35, 40, 80])
 GREEN_HIGH = np.array([90, 255, 255])
@@ -556,6 +558,69 @@ def estimate_text_split_x(crop: np.ndarray) -> int:
     return valley_idx
 
 
+# If one HSV contour spans two stacked killfeed lines, split into two boxes before OCR.
+TALL_ROW_SPLIT_MIN_H = 44
+TALL_ROW_SPLIT_RATIO = 1.65
+TALL_ROW_SPLIT_GAP = 2
+
+
+def split_tall_killfeed_row_boxes(
+    rows: list[tuple[int, int, int, int, str]],
+) -> list[tuple[int, int, int, int, str]]:
+    """Split unusually tall row contours (often two kill lines merged in the mask)."""
+    if not rows:
+        return rows
+    hs = [r[3] for r in rows]
+    med = max(float(np.median(hs)), 22.0)
+    lonely = len(rows) == 1
+    out: list[tuple[int, int, int, int, str]] = []
+    for x, y, w, h, c in rows:
+        should_split = h >= TALL_ROW_SPLIT_MIN_H and (
+            lonely or h >= med * TALL_ROW_SPLIT_RATIO
+        )
+        if should_split:
+            mid = h // 2
+            h1 = max(MIN_HEIGHT_ROW, mid - 1)
+            h2 = max(MIN_HEIGHT_ROW, h - h1 - TALL_ROW_SPLIT_GAP)
+            out.append((x, y, w, h1, c))
+            out.append((x, y + h1 + TALL_ROW_SPLIT_GAP, w, h2, c))
+        else:
+            out.append((x, y, w, h, c))
+    out.sort(key=lambda b: b[1])
+    return out
+
+
+def _compact_name_key(s: str) -> str:
+    return re.sub(r"\s+", "", (s or "").strip().lower())
+
+
+def prune_fragment_killfeed_rows(
+    row_items: list[tuple[dict, str, str, str, str]],
+) -> list[tuple[dict, str, str, str, str]]:
+    """
+    Drop rows that are usually OCR/mask artifacts:
+    - killer matches another row's victim but victim is missing or '?' (duplicate strip).
+    """
+    if len(row_items) <= 1:
+        return row_items
+    victims_compact = [_compact_name_key(v) for _, _, v, _, _ in row_items]
+    keep = [True] * len(row_items)
+    for i, (_, k, v, _, _) in enumerate(row_items):
+        v_st = (v or "").strip()
+        if v_st not in ("", "?"):
+            continue
+        ki = _compact_name_key(k)
+        if not ki:
+            continue
+        for j, vc in enumerate(victims_compact):
+            if j == i or not vc:
+                continue
+            if ki == vc:
+                keep[i] = False
+                break
+    return [row_items[i] for i in range(len(row_items)) if keep[i]]
+
+
 def expand_row_box(
     x: int, y: int, w: int, h: int, frame_w: int, frame_h: int
 ) -> tuple[int, int, int, int]:
@@ -761,6 +826,7 @@ def process_frame(
 
     t_detect_0 = time.perf_counter()
     boxes, masks = detect_killfeed_row_boxes(frame)
+    boxes = split_tall_killfeed_row_boxes(boxes)
     detect_ms = (time.perf_counter() - t_detect_0) * 1000.0
 
     events: list[KillfeedEvent] = []
@@ -829,14 +895,18 @@ def process_frame(
     parse_ms_total = (time.perf_counter() - t_parse_0) * 1000.0
     rows_parsed = len(row_work)
 
+    row_items: list[tuple[dict, str, str, str, str]] = []
     for rw in row_work:
         killer, victim, raw_l, raw_r = parsed_by_key[rw["row_key"]]
+        if killer or victim:
+            row_items.append((rw, killer, victim, raw_l, raw_r))
+    row_items.sort(key=lambda t: t[0]["y"])
+    row_items = prune_fragment_killfeed_rows(row_items)
+
+    for rw, killer, victim, raw_l, raw_r in row_items:
         x, y, w, h = rw["x"], rw["y"], rw["w"], rw["h"]
         ex, ey, ew, eh = rw["ex"], rw["ey"], rw["ew"], rw["eh"]
         row_color = rw["row_color"]
-
-        if not killer and not victim:
-            continue
 
         dup = False
         if recent_pairs is not None:
@@ -1100,9 +1170,27 @@ def main() -> None:
         default=None,
         help='EasyOCR detector: craft (default, works with pip PyTorch+CUDA) or dbnet18 (faster if deformable-conv builds; needs MSVC+CUDA_HOME on Windows).',
     )
+    parser.add_argument(
+        "--killfeed-rect",
+        type=str,
+        default=None,
+        metavar="TOP,LEFT,WIDTH,HEIGHT",
+        help="Override REGION_KILLFEED for this run (full-monitor coordinates), e.g. 80,1300,600,180",
+    )
     args = parser.parse_args()
 
-    global EASYOCR_CANVAS_SIZE, EASYOCR_STACK_ROWS, _easyocr_detect_network
+    global REGION_KILLFEED, EASYOCR_CANVAS_SIZE, EASYOCR_STACK_ROWS, _easyocr_detect_network
+    if args.killfeed_rect:
+        parts = [int(x.strip()) for x in args.killfeed_rect.split(",")]
+        if len(parts) != 4 or any(p < 0 for p in parts):
+            raise SystemExit("--killfeed-rect requires four non-negative integers: TOP,LEFT,WIDTH,HEIGHT")
+        REGION_KILLFEED = {
+            "top": parts[0],
+            "left": parts[1],
+            "width": parts[2],
+            "height": parts[3],
+        }
+        print(f"Killfeed region override: {REGION_KILLFEED}")
     if args.easyocr_canvas_size is not None:
         EASYOCR_CANVAS_SIZE = max(64, min(4096, int(args.easyocr_canvas_size)))
     if args.easyocr_no_stack_rows:

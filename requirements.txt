@@ -1,0 +1,14 @@
+# Valorant killfeed tracker — Python deps.
+#
+# PyTorch: install CUDA wheels FIRST (CPU-only PyPI default breaks EasyOCR GPU).
+#
+#   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
+#   pip install -r requirements.txt
+#
+# Pick cu118 / cu124 / cu126 to match your driver; see https://pytorch.org/get-started/locally/
+
+opencv-python>=4.8.0
+numpy>=1.24
+mss
+pytesseract
+easyocr>=1.7.0

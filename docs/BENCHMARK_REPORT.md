@@ -1,6 +1,6 @@
 # Killfeed OCR benchmark and recommended settings
 
-Document date: March 2026. Sources: [bench_kf3.csv](../bench_kf3.csv), [benchmark_killfeed_results_kf3.json](../benchmark_killfeed_results_kf3.json), [benchmark_single_110639.json](../benchmark_single_110639.json), settings in [valorant_killfeed_tracker.py](../valorant_killfeed_tracker.py).
+Document date: March 2026. Sources: [bench_kf3.csv](../bench_kf3.csv), [benchmark_killfeed_results_kf3.json](../benchmark_killfeed_results_kf3.json), [bench_kf6.csv](../bench_kf6.csv), [benchmark_killfeed_results_kf6.json](../benchmark_killfeed_results_kf6.json), [benchmark_reference_kf6.json](../benchmark_reference_kf6.json), [bench_kf6_engines.csv](../bench_kf6_engines.csv), [benchmark_single_110639.json](../benchmark_single_110639.json), settings in [valorant_killfeed_tracker.py](../valorant_killfeed_tracker.py).
 
 ---
 
@@ -12,13 +12,13 @@ Document date: March 2026. Sources: [bench_kf3.csv](../bench_kf3.csv), [benchmar
 
 ## 2. Screenshot resolution
 
-All images used for the numbers in this report (kf3 plus the single-image `110639` run) were checked on disk:
+All images used for the numbers in this report (kf3, kf6, plus the single-image `110639` run) were checked on disk:
 
 - **Full-frame PNG:** **1920×1080 px** (Full HD).
 
 The tracker then crops the killfeed column using a code constant (defaults):
 
-- **`REGION_KILLFEED`:** width **600 px**, height **380 px**, `left` / `top` offsets for your monitor (in this repo typically `left: 1300`, `top: 80` — see [valorant_killfeed_tracker.py](../valorant_killfeed_tracker.py)).
+- **`REGION_KILLFEED`:** width **600 px**, height **180 px** (short strip — avoids the **combat report** modal below the killfeed), `left` / `top` for your monitor (typically `left: 1300`, `top: 80` — see [valorant_killfeed_tracker.py](../valorant_killfeed_tracker.py)). Override per run: `--killfeed-rect TOP,LEFT,WIDTH,HEIGHT`.
 
 OCR runs on **individual row crops** inside that region; their size depends on contour detection.
 
@@ -62,6 +62,29 @@ So the published **tens of ms per image** are typically a **hot** state after wa
 **Speed takeaway:** best in this grid is **CRAFT + canvas 480 + stacked readtext** for multiple rows. Disabled stack is noticeably slower.
 
 **Quality vs reference (0.667):** all grid configs produced the same OCR pairs; the metric is not 1.0 partly because one frame has **two** killfeed rows while the reference lists **one**, plus nickname spelling differences (for strict checks, align the reference with the real row count).
+
+### kf6 extended set (six images, CUDA)
+
+**Dataset:** kf3 trio plus [killfeed_20260319_193249_052.png](../killfeed_screenshots/killfeed_20260319_193249_052.png), [killfeed_20260319_193548_483.png](../killfeed_screenshots/killfeed_20260319_193548_483.png), [killfeed_20260319_193712_526.png](../killfeed_screenshots/killfeed_20260319_193712_526.png) (multi-row, spaced nickname, empty ROI). Reference: [benchmark_reference_kf6.json](../benchmark_reference_kf6.json). **Host (example):** PyTorch **2.10.0+cu126**, **NVIDIA GeForce GTX 1660 Ti**, `torch.cuda.is_available() == True`. **Sweep:** CRAFT, `canvas_size` ∈ {480, 640, 960}, `stack_rows` ∈ {true, false}, `--repeats 5 --warmup 1`. Artifacts: [bench_kf6.csv](../bench_kf6.csv), [benchmark_killfeed_results_kf6.json](../benchmark_killfeed_results_kf6.json).
+
+**Grid leader (by `balanced_rank`):** **craft, canvas 640, stack=True** — **~29.6 ms/image** parse (~31.6 ms total/image). On this run **stack=True** occupied the top three slots; **stack=False** was ~41–42 ms/image (clearly slower on GPU for this set). **mean_reference_accuracy** was **0.40** and **mean_completeness ~0.94** for every cell (unchanged vs CPU-only kf6 runs — canvas/stack does not fix strict reference mismatches).
+
+| Rank | Config | Median parse, ms/image | Median total, ms/image | mean_completeness | mean_reference_accuracy |
+|------|--------|------------------------|------------------------|-------------------|-------------------------|
+| 1 | canvas **640**, **stack=True** | **~29.6** | **~31.6** | ~0.94 | 0.40 |
+| 2 | canvas 960, stack=True | ~29.9 | ~32.0 | ~0.94 | 0.40 |
+| 3 | canvas 480, stack=True | ~32.3 | ~34.7 | ~0.94 | 0.40 |
+| 4 | canvas 480, stack=False | ~41.0 | ~43.2 | ~0.94 | 0.40 |
+| 5 | canvas 640, stack=False | ~41.1 | ~43.1 | ~0.94 | 0.40 |
+| 6 | canvas 960, stack=False | ~42.1 | ~44.2 | ~0.94 | 0.40 |
+
+**Engine spot-check (same six images, EasyOCR fixed to canvas 480 + stack=True):** [bench_kf6_engines.csv](../bench_kf6_engines.csv). EasyOCR **~29.0 ms/image** parse; **both** ~**1039** ms/image; **tesseract** ~**922** ms/image; ref **0.40 / 0.20 / 0.00** respectively.
+
+**Parser post-step (after the CUDA table above):** [valorant_killfeed_tracker.py](../valorant_killfeed_tracker.py) now (1) **splits tall HSV row contours** that often merge two killfeed lines, and (2) **drops fragment rows** where the killer repeats another row’s victim while the victim is empty/`?` (spurious second strip). Re-run the kf6 benchmark to refresh CSV/JSON; on a quick check **`mean_reference_accuracy` moved ~0.40 → ~0.50** on the same reference while **speed tier stays ~30 ms/image** on GPU-class hardware. Remaining gaps are mostly **strict string** mismatches (`hookill` vs `hookill4`, `Bot` vs `Bot 1`, spaces in nicknames) and **extra rows** still detected on some frames (e.g. second red bar on `110428`).
+
+```bash
+python benchmark_killfeed_ocr.py --images killfeed_screenshots/killfeed_20260320_110428_934.png killfeed_screenshots/killfeed_20260320_110237_631.png killfeed_screenshots/killfeed_20260319_193915_057.png killfeed_screenshots/killfeed_20260319_193249_052.png killfeed_screenshots/killfeed_20260319_193548_483.png killfeed_screenshots/killfeed_20260319_193712_526.png --reference benchmark_reference_kf6.json --networks craft --canvas-sizes 480 640 960 --stack-rows true false --engines easyocr --repeats 5 --warmup 1 --out benchmark_killfeed_results_kf6.json --csv bench_kf6.csv
+```
 
 ### Extra check (one image, 10 repeats)
 
@@ -110,7 +133,7 @@ python benchmark_killfeed_ocr.py --images …(three kf3)… --reference benchmar
 
 Tesseract / **both** on the CPU run stay in the same ballpark (**~1.3–1.5 s/image**): those paths are already CPU-heavy; **reference** scores unchanged (0.00 / 0.33).
 
-**Windows:** to actually disable CUDA, prefer **`--cpu`** or `$env:CUDA_VISIBLE_DEVICES='-1'` before `python`; an **empty** env var string in PowerShell may **fail** to hide the GPU.
+To force CPU-only EasyOCR, use **`--cpu`** on the benchmark or set **`CUDA_VISIBLE_DEVICES=-1`** in the environment before `python` (syntax depends on your shell).
 
 ---
 
@@ -123,10 +146,12 @@ Tesseract / **both** on the CPU run stay in the same ballpark (**~1.3–1.5 s/im
 | Detection canvas size | **480** | `--easyocr-canvas-size 480` |
 | Stacked OCR for multiple rows | **on** | omit `--easyocr-no-stack-rows` |
 
+**kf6 on GTX 1660 Ti (CUDA):** full grid winner was **canvas 640** + stack (see **kf6** subsection above); **480** + stack was ~2.7 ms/image slower on parse — still inside a comfortable 200–500 ms/frame budget. Default **480** stays the main recommendation (matches kf3 grid, slightly smaller detector input); try **`--easyocr-canvas-size 640`** if you want the kf6-tuned optimum on similar hardware.
+
 Single-file example:
 
 ```bash
-python valorant_killfeed_tracker.py --image killfeed_screenshots\YOUR.png --no-show --ocr-engine easyocr --easyocr-canvas-size 480 --easyocr-detect-network craft
+python valorant_killfeed_tracker.py --image killfeed_screenshots/YOUR.png --no-show --ocr-engine easyocr --easyocr-canvas-size 480 --easyocr-detect-network craft
 ```
 
 **DBNet (`dbnet18`):** on Windows without **CUDA_HOME** and **MSVC (`cl`)**, deformable-conv extensions usually do not build; this repo defaults to **CRAFT**. For dbnet18, install the full toolchain and use `--easyocr-detect-network dbnet18` (see [README](../README.md)).
@@ -167,7 +192,9 @@ Also: killer→victim deduplication, [overlay_stats.txt](../overlay_stats.txt) f
 3. **[analysis_timings.jsonl](../analysis_timings.jsonl)** reflects one frame after **in-process** warmup; a one-off cold process can still differ from the benchmark median.  
 4. Stack: **Python, MSS, OpenCV, NumPy, Tesseract (optional), EasyOCR, PyTorch/CUDA**.  
 5. On kf3 **Tesseract** and **both** are much slower and worse vs the reference — see the “Engine comparison” table.  
-6. **EasyOCR without CUDA** ([benchmark_killfeed_ocr.py](../benchmark_killfeed_ocr.py) `--cpu`): same top config lands around **~260+ ms/image** instead of **~30–40 ms** on GPU — see [bench_kf3_cpu.csv](../bench_kf3_cpu.csv).
+6. **EasyOCR without CUDA** ([benchmark_killfeed_ocr.py](../benchmark_killfeed_ocr.py) `--cpu`): same top config lands around **~260+ ms/image** instead of **~30–40 ms** on GPU — see [bench_kf3_cpu.csv](../bench_kf3_cpu.csv).  
+7. **kf6 + CUDA:** grid **leader** = **CRAFT + canvas 640 + stack=True** (~**30 ms/image** parse on GTX 1660 Ti); **stack=True** beats **stack=False** on GPU for this set; reference accuracy stays **0.40** across the grid.  
+8. **Post-parse heuristics** (tall-row split + duplicate-strip prune) improve kf6 **reference** score in testing — **re-run** the benchmark after pulling; see kf6 subsection above.
 
 ---
 
