@@ -146,7 +146,7 @@ To force CPU-only EasyOCR, use **`--cpu`** on the benchmark or set **`CUDA_VISIB
 | Detection canvas size | **480** | `--easyocr-canvas-size 480` |
 | Stacked OCR for multiple rows | **on** | omit `--easyocr-no-stack-rows` |
 
-**kf6 on GTX 1660 Ti (CUDA):** full grid winner was **canvas 640** + stack (see **kf6** subsection above); **480** + stack was ~2.7 ms/image slower on parse — still inside a comfortable 200–500 ms/frame budget. Default **480** stays the main recommendation (matches kf3 grid, slightly smaller detector input); try **`--easyocr-canvas-size 640`** if you want the kf6-tuned optimum on similar hardware.
+**kf6 on GTX 1660 Ti (CUDA):** full grid winner was **canvas 640** + stack (see **kf6** subsection above); **480** + stack was ~2.7 ms/image slower on parse. The original product target of **~200–500 ms per frame** assumed **killfeed text + weapon** in one pipeline; **this repo’s timings are killfeed-only** (killer/victim OCR) — **weapon icon parsing is not implemented**, so today’s ~tens of ms/image on GPU is **headroom** toward that budget once a weapon step exists. Default **480** stays the main recommendation (matches kf3 grid, slightly smaller detector input); try **`--easyocr-canvas-size 640`** if you want the kf6-tuned optimum on similar hardware.
 
 Single-file example:
 

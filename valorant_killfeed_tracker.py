@@ -135,7 +135,7 @@ EASYOCR_ONE_PASS = True
 ROW_OCR_CACHE_MAX = 64
 
 # EasyOCR speed (defaults were ~2–3s/frame on GPU: huge canvas + 2x upscale + per-row detect).
-# Target ~200–500 ms for 1–3 rows on mid-range NVIDIA.
+# Product goal ~200–500 ms/frame often includes weapon + names; we only OCR names here (no weapon icons).
 # Default "craft": DBNet (dbnet18) needs JIT deformable-conv; on Windows that usually needs
 # MSVC + CUDA toolkit (CUDA_HOME) or the runtime errors with tensors on CUDA.
 EASYOCR_DETECT_NETWORK = "craft"  # "dbnet18" often faster when DCN extensions build OK
