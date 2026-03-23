@@ -15,6 +15,8 @@ Default engine is EasyOCR; use ``--ocr-engine tesseract`` for a lighter dependen
 Empty killfeed slots (band over map only): green+red HSV highlight below a threshold → ``active=false``,
 no OCR / weapon work. Tune ``--min-band-highlight-px`` / ``--min-band-highlight-frac`` if needed.
 Use ``--omit-inactive-bands`` to drop inactive rows from JSON.
+
+Design notes and ``parse_killfeed_image`` integration: ``docs/UNIFIED_PARSE.md``.
 """
 from __future__ import annotations
 

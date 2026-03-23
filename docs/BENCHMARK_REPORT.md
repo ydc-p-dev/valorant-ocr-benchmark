@@ -170,6 +170,8 @@ Limitations: you need a **stable UI region** for lobby/load, handle player chang
 
 ## 7. Technologies used
 
+See also the consolidated list: [`docs/TECH_STACK.md`](TECH_STACK.md).
+
 | Component | Role |
 |-----------|------|
 | **Python 3.9+** | Logic, CLI, logs |

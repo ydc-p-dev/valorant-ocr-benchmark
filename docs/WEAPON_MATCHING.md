@@ -68,6 +68,8 @@ python scripts/match_killfeed_weapon.py path/to/screenshot.png \
 
 ## Unified parser (`parse_killfeed.py`)
 
+Full pipeline (library API, `KillfeedEvent`, inactive bands, prototype usage): **[`docs/UNIFIED_PARSE.md`](UNIFIED_PARSE.md)**.
+
 Single entry point that runs **OCR + weapon templates** on the same row bands:
 
 ```bash
@@ -96,5 +98,6 @@ Each `row_bands_frac` entry becomes a **full-width** row crop for OCR. Row color
 
 ## See also
 
+- **[`docs/TECH_STACK.md`](TECH_STACK.md)** — consolidated technologies and approaches for the whole repo.
 - Module docstring at top of `scripts/match_killfeed_weapon.py` for extra examples and flags.
 - `docs/BENCHMARK_REPORT.md` if you add timing notes for `--bench-repetitions`.

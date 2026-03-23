@@ -6,6 +6,8 @@ https://drive.google.com/file/d/1NUj_Ucyr-1mkolp1d6s4uZM7t7HWL4Ad/view?usp=drive
 ![Detection Preview](Detection.gif)
 
 ## Overview
+**Stack and design record (consolidated):** [`docs/TECH_STACK.md`](docs/TECH_STACK.md).
+
 This project parses the **on-screen killfeed** using:
 - **Screen capture (MSS)**
 - **Image processing (OpenCV)**
@@ -43,7 +45,7 @@ Deduplication of repeated killer→victim pairs within a short window, timing lo
 Multi-template masked NCC for killfeed weapon silhouettes: [`docs/WEAPON_MATCHING.md`](docs/WEAPON_MATCHING.md). Template PNGs live in **`assets/icons/`** (see `config/weapon_templates.json`).
 
 ### **6. Unified parser (names + weapons)**
-[`parse_killfeed.py`](parse_killfeed.py) — one pass per `row_bands_frac` row: OCR + optional templates (writes `killfeed_parse.json`).
+[`parse_killfeed.py`](parse_killfeed.py) — one pass per `row_bands_frac` row: OCR + optional templates (writes `killfeed_parse.json`). **How it works & library API (`parse_killfeed_image`):** [`docs/UNIFIED_PARSE.md`](docs/UNIFIED_PARSE.md).
 
 ---
 
