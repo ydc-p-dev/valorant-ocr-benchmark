@@ -5,7 +5,7 @@ Unified killfeed parser: OCR (killer / victim) + optional weapon template matchi
 Uses the same ``row_bands_frac`` JSON as ``scripts/match_killfeed_weapon.py`` so each row
 line aligns with one weapon pass.
 
-  python parse_killfeed.py --image killfeed_screenshots/foo.png \\
+  python parse_killfeed.py --image assets/screenshots/foo.png \\
       --row-bands-json config/killfeed_row_bands.json \\
       --weapon-templates-json config/weapon_templates.json
 

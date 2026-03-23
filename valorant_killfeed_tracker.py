@@ -126,7 +126,11 @@ MAX_STORED_EVENTS = 80
 
 OCR_PSM_LINE = "--psm 7"  # single text line
 OCR_UPSCALE = 2
-OCR_CHAR_WHITELIST = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_#"
+# Include space for EasyOCR allowlist (multi-word Riot display names). Tesseract ``-c`` is built
+# without spaces in the value so Windows ``pytesseract``/``shlex.split`` does not break the argv.
+_OCR_CHARS_ALNUM = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_#"
+OCR_CHAR_WHITELIST = _OCR_CHARS_ALNUM + " "
+TESSERACT_CHAR_WHITELIST = _OCR_CHARS_ALNUM
 DEFAULT_OCR_ENGINE = "easyocr"  # tesseract | easyocr | both
 
 # EasyOCR: one readtext() per killfeed row (left+right names) instead of two — much faster live.
@@ -158,7 +162,7 @@ ROW_EXPAND_BOTTOM = 2
 
 TIMINGS_JSONL = "analysis_timings.jsonl"
 LIVE_LOG_EVERY_FRAMES = 10  # avoid huge logs in real-time
-SCREENSHOT_DIR = "killfeed_screenshots"
+SCREENSHOT_DIR = "temp/screenshots"
 SCREENSHOT_COOLDOWN = 1.0  # seconds between full-screen captures
 # Live mode: save full-monitor PNG when new killfeed rows are detected (overridable via CLI).
 SAVE_FULLSCREEN_ON_KILLFEED = True
@@ -277,7 +281,7 @@ def ocr_line_region(bgr: np.ndarray) -> str:
     white_mask = cv2.morphologyEx(white_mask, cv2.MORPH_OPEN, np.ones((2, 2), np.uint8), iterations=1)
     var3 = white_mask
 
-    cfg = f"{OCR_PSM_LINE} -c tessedit_char_whitelist={OCR_CHAR_WHITELIST}"
+    cfg = f"{OCR_PSM_LINE} -c tessedit_char_whitelist={TESSERACT_CHAR_WHITELIST}"
     cand = []
     for prepared in (var1, var2, var3):
         prepared = upscale_for_ocr(prepared)

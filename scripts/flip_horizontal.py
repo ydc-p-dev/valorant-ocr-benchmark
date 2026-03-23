@@ -4,11 +4,11 @@ Horizontally flip image(s). Preserves alpha (BGRA) and single-channel masks.
 
 Examples:
 
-  python scripts/flip_horizontal.py assets/Phantom_killfeed.png
-  # writes assets/Phantom_killfeed_hflip.png
+  python scripts/flip_horizontal.py assets/icons/Phantom_killfeed.png
+  # writes assets/icons/Phantom_killfeed_hflip.png
 
   python scripts/flip_horizontal.py a.png b.png --in-place
-  python scripts/flip_horizontal.py icon.png -o assets/processed/icon_flipped.png
+  python scripts/flip_horizontal.py icon.png -o assets/icon_flipped.png
   python scripts/flip_horizontal.py assets/foo.png assets/bar.png --out-dir assets/flipped
 """
 from __future__ import annotations

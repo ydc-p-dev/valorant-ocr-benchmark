@@ -1,5 +1,6 @@
 {
-  "Vandal": "../assets/Vandal_killfeed.png",
-  "Spectre": "../assets/Spectre_killfeed.png",
-  "Phantom": "../assets/Phantom_killfeed.png"
+  "Vandal": "../assets/icons/Vandal_killfeed.png",
+  "Spectre": "../assets/icons/Spectre_killfeed.png",
+  "Phantom": "../assets/icons/Phantom_killfeed.png",
+  "Marshal": "../assets/icons/Marshal_killfeed.png"
 }

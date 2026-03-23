@@ -5,7 +5,7 @@ Benchmark full unified killfeed parse: row bands + masks, optional weapon templa
 Uses :func:`parse_killfeed.parse_killfeed_roi_unified` (same path as ``parse_killfeed.py``).
 
 Examples:
-  python benchmark_parse_killfeed.py --folder killfeed_screenshots --repeats 5 --warmup 1
+  python benchmark_parse_killfeed.py --folder assets/screenshots --repeats 5 --warmup 1
   python benchmark_parse_killfeed.py --images shot.png --ocr-engine tesseract --no-weapons
   python benchmark_parse_killfeed.py --folder shots --cpu --out benchmark_parse_results.json
 """

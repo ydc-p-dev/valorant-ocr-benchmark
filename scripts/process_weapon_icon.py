@@ -4,7 +4,7 @@ Normalize a wiki/fandom weapon icon into a killfeed-style silhouette for templat
 
 Example (Vandal, barrel points left in source → flip to match in-game killfeed):
 
-  python scripts/process_weapon_icon.py assets/Vandal_icon.png -o assets/processed/Vandal_template.png
+  python scripts/process_weapon_icon.py wiki_icon.png -o assets/icons/MyWeapon_killfeed.png
 
 Tune thresholds on your assets if the mask is too thin or too noisy:
   --alpha-thresh, --gray-thresh, --mask-and, --close-iter, --dilate-iter, --no-flip
@@ -110,7 +110,7 @@ def main() -> None:
         "--output",
         type=Path,
         default=None,
-        help="Output path (.png). Default: assets/processed/<stem>_template.png",
+        help="Output path (.png). Default: <input-dir>/processed/<stem>_template.png (e.g. -o assets/icons/Weapon_killfeed.png)",
     )
     p.add_argument("--height", type=int, default=28, help="Silhouette height in px (killfeed-scale).")
     p.add_argument("--no-flip", action="store_true", help="Do not mirror horizontally.")

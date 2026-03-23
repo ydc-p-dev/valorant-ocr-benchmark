@@ -216,14 +216,10 @@ __marimo__/
 .streamlit/secrets.toml
 
 # --- Valorant killfeed overlay: runtime output & captures ---
-# Benchmark dataset PNGs (kf3) are tracked; other live captures stay local
-killfeed_screenshots/*
-!killfeed_screenshots/killfeed_20260320_110428_934.png
-!killfeed_screenshots/killfeed_20260320_110237_631.png
-!killfeed_screenshots/killfeed_20260319_193915_057.png
-!killfeed_screenshots/killfeed_20260319_193249_052.png
-!killfeed_screenshots/killfeed_20260319_193548_483.png
-!killfeed_screenshots/killfeed_20260319_193712_526.png
+# Local scratch (not in repo)
+temp/
+
+
 overlay_stats.txt
 killfeed_events.json
 killfeed_parse.json

@@ -1,23 +1,23 @@
 {
-  "killfeed_20260320_110428_934.png": [
+  "bench_kf3_extra_row_vs_single_ref.png": [
     {
       "killer": "hookill",
       "victim": "beskhu3epmn"
     }
   ],
-  "killfeed_20260320_110237_631.png": [
+  "bench_kf3_single_ally_kill.png": [
     {
       "killer": "beskhu3epmn",
       "victim": "rery"
     }
   ],
-  "killfeed_20260319_193915_057.png": [
+  "bench_kf3_single_mixed_case_names.png": [
     {
       "killer": "ZuziaGG",
       "victim": "julieii"
     }
   ],
-  "killfeed_20260319_193249_052.png": [
+  "bench_kf6_two_rows_with_bot.png": [
     {
       "killer": "chivasiara",
       "victim": "GoodWoman"
@@ -27,7 +27,7 @@
       "victim": "Bot 1"
     }
   ],
-  "killfeed_20260319_193548_483.png": [
+  "bench_kf6_two_rows_spaced_nicknames.png": [
     {
       "killer": "GoodWoman",
       "victim": "zupa romanakai"
@@ -37,5 +37,5 @@
       "victim": "Igozak"
     }
   ],
-  "killfeed_20260319_193712_526.png": []
+  "bench_kf6_empty_reference_rows.png": []
 }

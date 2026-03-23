@@ -3,7 +3,7 @@
 Grid benchmark: sweep EasyOCR (and optionally Tesseract) on static killfeed images.
 
 Examples:
-  python benchmark_killfeed_ocr.py --folder killfeed_screenshots --repeats 5 --warmup 1
+  python benchmark_killfeed_ocr.py --folder assets/screenshots --repeats 5 --warmup 1
   python benchmark_killfeed_ocr.py --images shot.png --canvas-sizes 480 640
   python benchmark_killfeed_ocr.py --folder shots --networks craft dbnet18 --force-dbnet-sweep
   python benchmark_killfeed_ocr.py --images a.png b.png --cpu --engines easyocr  # EasyOCR on CPU only

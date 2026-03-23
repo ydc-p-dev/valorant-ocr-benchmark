@@ -40,7 +40,7 @@ Text recognition on name regions.
 Deduplication of repeated killer→victim pairs within a short window, timing logs.
 
 ### **5. Weapon icon matching (optional)**
-Multi-template masked NCC for killfeed weapon silhouettes: [`docs/WEAPON_MATCHING.md`](docs/WEAPON_MATCHING.md).
+Multi-template masked NCC for killfeed weapon silhouettes: [`docs/WEAPON_MATCHING.md`](docs/WEAPON_MATCHING.md). Template PNGs live in **`assets/icons/`** (see `config/weapon_templates.json`).
 
 ### **6. Unified parser (names + weapons)**
 [`parse_killfeed.py`](parse_killfeed.py) — one pass per `row_bands_frac` row: OCR + optional templates (writes `killfeed_parse.json`).
@@ -153,8 +153,8 @@ In code: `EASYOCR_ONE_PASS = False` restores two reads per row (slower, sometime
 `benchmark_killfeed_ocr.py` sweeps EasyOCR settings (and optionally `tesseract` / `both`) on a folder of screenshots, records median parse time **per image**, completeness (both names non-empty), and optional **reference** accuracy. Output: JSON (full detail) and optional CSV.
 
 ```bash
-python benchmark_killfeed_ocr.py --folder killfeed_screenshots --max-images 5 --repeats 5 --warmup 1 --csv benchmark_summary.csv
-python benchmark_killfeed_ocr.py --images killfeed_screenshots/some.png --canvas-sizes 480 640 960 --stack-rows true false
+python benchmark_killfeed_ocr.py --folder assets/screenshots --max-images 5 --repeats 5 --warmup 1 --csv benchmark_summary.csv
+python benchmark_killfeed_ocr.py --images assets/screenshots/some.png --canvas-sizes 480 640 960 --stack-rows true false
 python benchmark_killfeed_ocr.py --folder shots --reference benchmark_reference.example.json --ref-weight 0.7
 ```
 
@@ -167,6 +167,8 @@ Copy `benchmark_reference.example.json`, rename, and list expected `(killer, vic
 By default the row OCR cache is cleared before **each timed pass** so numbers reflect full OCR work. For “live-like” hot-cache timing use `--no-clear-cache-each-pass`.
 
 #### Which images ran
+
+Tracked reference PNGs live in **`assets/screenshots/`** (`bench_kf3_*`, `bench_kf6_*`, `bench_parse_*`). Ad-hoc live captures go to **`temp/screenshots/`** (ignored by git).
 
 - **Console:** `Benchmark images (N): file1.png, file2.png, ...` right after startup.
 - **JSON** (`--out`, default `benchmark_killfeed_results.json`): top-level `"images"` = full paths used; `"max_images"` if you capped the set.
@@ -183,7 +185,7 @@ By default the row OCR cache is cleared before **each timed pass** so numbers re
 - `overlay_stats.txt` — last parsed row, e.g. `Last: alice -> bob  (red)`
 - `killfeed_events.json` — recent events: `killer`, `victim`, `row_color`, `probable_enemy_kill`, `raw_left`, `raw_right`, `t`
 - `analysis_timings.jsonl` — per-frame / per-image timings (`t_parse_ms_total` = OCR only, after row detection). Before the first frame, EasyOCR runs a **full warm-up** (synthetic text + single-row and stacked `readtext`, then `cuda.synchronize`) so this is closer to benchmark “hot” times. Each new `python ...` process still pays reader load + warm-up once (not included in `t_parse_ms_total`).
-- `killfeed_screenshots/` — full-screen PNG when new events appear (live)
+- `temp/screenshots/` — full-screen PNG when new events appear (live; under `temp/`, not committed)
 
 ---
 

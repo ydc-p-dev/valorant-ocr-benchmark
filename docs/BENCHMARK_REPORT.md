@@ -12,7 +12,7 @@ Document date: March 2026. Sources: [bench_kf3.csv](../bench_kf3.csv), [benchmar
 
 ## 2. Screenshot resolution
 
-All images used for the numbers in this report (kf3, kf6, plus the single-image `110639` run) were checked on disk:
+All images used for the numbers in this report (kf3, kf6, plus the single-image **§4** `bench_parse_10repeats_one_row` capture) were checked on disk:
 
 - **Full-frame PNG:** **1920×1080 px** (Full HD).
 
@@ -46,7 +46,7 @@ So the published **tens of ms per image** are typically a **hot** state after wa
 
 ## 4. Benchmark results (kf3 set)
 
-**Dataset:** 3 images ([killfeed_20260320_110428_934.png](../killfeed_screenshots/killfeed_20260320_110428_934.png), [killfeed_20260320_110237_631.png](../killfeed_screenshots/killfeed_20260320_110237_631.png), [killfeed_20260319_193915_057.png](../killfeed_screenshots/killfeed_20260319_193915_057.png)); details in the `image_basenames` column of [bench_kf3.csv](../bench_kf3.csv).  
+**Dataset (kf3):** 3 images — [bench_kf3_extra_row_vs_single_ref.png](../assets/screenshots/bench_kf3_extra_row_vs_single_ref.png) (reference lists one row; parser sometimes sees an extra strip — see kf3 quality note), [bench_kf3_single_ally_kill.png](../assets/screenshots/bench_kf3_single_ally_kill.png), [bench_kf3_single_mixed_case_names.png](../assets/screenshots/bench_kf3_single_mixed_case_names.png). Regenerated CSV columns use the same basenames; see [bench_kf3.csv](../bench_kf3.csv).  
 **Engine:** EasyOCR, **CRAFT** detector (`dbnet18` was not used on test Windows without a full toolchain — see [README](../README.md)).  
 **Grid:** `canvas_size` ∈ {480, 640, 960}, `stack_rows` ∈ {true, false}.
 
@@ -65,7 +65,7 @@ So the published **tens of ms per image** are typically a **hot** state after wa
 
 ### kf6 extended set (six images, CUDA)
 
-**Dataset:** kf3 trio plus [killfeed_20260319_193249_052.png](../killfeed_screenshots/killfeed_20260319_193249_052.png), [killfeed_20260319_193548_483.png](../killfeed_screenshots/killfeed_20260319_193548_483.png), [killfeed_20260319_193712_526.png](../killfeed_screenshots/killfeed_20260319_193712_526.png) (multi-row, spaced nickname, empty ROI). Reference: [benchmark_reference_kf6.json](../benchmark_reference_kf6.json). **Host (example):** PyTorch **2.10.0+cu126**, **NVIDIA GeForce GTX 1660 Ti**, `torch.cuda.is_available() == True`. **Sweep:** CRAFT, `canvas_size` ∈ {480, 640, 960}, `stack_rows` ∈ {true, false}, `--repeats 5 --warmup 1`. Artifacts: [bench_kf6.csv](../bench_kf6.csv), [benchmark_killfeed_results_kf6.json](../benchmark_killfeed_results_kf6.json).
+**Dataset (kf6):** kf3 trio plus [bench_kf6_two_rows_with_bot.png](../assets/screenshots/bench_kf6_two_rows_with_bot.png) (two stacked rows incl. bot line), [bench_kf6_two_rows_spaced_nicknames.png](../assets/screenshots/bench_kf6_two_rows_spaced_nicknames.png) (spaced victim name), [bench_kf6_empty_reference_rows.png](../assets/screenshots/bench_kf6_empty_reference_rows.png) (empty killfeed in ROI — reference `[]`). Reference: [benchmark_reference_kf6.json](../benchmark_reference_kf6.json). **Host (example):** PyTorch **2.10.0+cu126**, **NVIDIA GeForce GTX 1660 Ti**, `torch.cuda.is_available() == True`. **Sweep:** CRAFT, `canvas_size` ∈ {480, 640, 960}, `stack_rows` ∈ {true, false}, `--repeats 5 --warmup 1`. Artifacts: [bench_kf6.csv](../bench_kf6.csv), [benchmark_killfeed_results_kf6.json](../benchmark_killfeed_results_kf6.json).
 
 **Grid leader (by `balanced_rank`):** **craft, canvas 640, stack=True** — **~29.6 ms/image** parse (~31.6 ms total/image). On this run **stack=True** occupied the top three slots; **stack=False** was ~41–42 ms/image (clearly slower on GPU for this set). **mean_reference_accuracy** was **0.40** and **mean_completeness ~0.94** for every cell (unchanged vs CPU-only kf6 runs — canvas/stack does not fix strict reference mismatches).
 
@@ -80,15 +80,15 @@ So the published **tens of ms per image** are typically a **hot** state after wa
 
 **Engine spot-check (same six images, EasyOCR fixed to canvas 480 + stack=True):** [bench_kf6_engines.csv](../bench_kf6_engines.csv). EasyOCR **~29.0 ms/image** parse; **both** ~**1039** ms/image; **tesseract** ~**922** ms/image; ref **0.40 / 0.20 / 0.00** respectively.
 
-**Parser post-step (after the CUDA table above):** [valorant_killfeed_tracker.py](../valorant_killfeed_tracker.py) now (1) **splits tall HSV row contours** that often merge two killfeed lines, and (2) **drops fragment rows** where the killer repeats another row’s victim while the victim is empty/`?` (spurious second strip). Re-run the kf6 benchmark to refresh CSV/JSON; on a quick check **`mean_reference_accuracy` moved ~0.40 → ~0.50** on the same reference while **speed tier stays ~30 ms/image** on GPU-class hardware. Remaining gaps are mostly **strict string** mismatches (`hookill` vs `hookill4`, `Bot` vs `Bot 1`, spaces in nicknames) and **extra rows** still detected on some frames (e.g. second red bar on `110428`).
+**Parser post-step (after the CUDA table above):** [valorant_killfeed_tracker.py](../valorant_killfeed_tracker.py) now (1) **splits tall HSV row contours** that often merge two killfeed lines, and (2) **drops fragment rows** where the killer repeats another row’s victim while the victim is empty/`?` (spurious second strip). Re-run the kf6 benchmark to refresh CSV/JSON; on a quick check **`mean_reference_accuracy` moved ~0.40 → ~0.50** on the same reference while **speed tier stays ~30 ms/image** on GPU-class hardware. Remaining gaps are mostly **strict string** mismatches (`hookill` vs `hookill4`, `Bot` vs `Bot 1`, spaces in nicknames) and **extra rows** still detected on some frames (e.g. second red bar on `bench_kf3_extra_row_vs_single_ref.png`).
 
 ```bash
-python benchmark_killfeed_ocr.py --images killfeed_screenshots/killfeed_20260320_110428_934.png killfeed_screenshots/killfeed_20260320_110237_631.png killfeed_screenshots/killfeed_20260319_193915_057.png killfeed_screenshots/killfeed_20260319_193249_052.png killfeed_screenshots/killfeed_20260319_193548_483.png killfeed_screenshots/killfeed_20260319_193712_526.png --reference benchmark_reference_kf6.json --networks craft --canvas-sizes 480 640 960 --stack-rows true false --engines easyocr --repeats 5 --warmup 1 --out benchmark_killfeed_results_kf6.json --csv bench_kf6.csv
+python benchmark_killfeed_ocr.py --images assets/screenshots/bench_kf3_extra_row_vs_single_ref.png assets/screenshots/bench_kf3_single_ally_kill.png assets/screenshots/bench_kf3_single_mixed_case_names.png assets/screenshots/bench_kf6_two_rows_with_bot.png assets/screenshots/bench_kf6_two_rows_spaced_nicknames.png assets/screenshots/bench_kf6_empty_reference_rows.png --reference benchmark_reference_kf6.json --networks craft --canvas-sizes 480 640 960 --stack-rows true false --engines easyocr --repeats 5 --warmup 1 --out benchmark_killfeed_results_kf6.json --csv bench_kf6.csv
 ```
 
 ### Extra check (one image, 10 repeats)
 
-File [benchmark_single_110639.json](../benchmark_single_110639.json): image [killfeed_20260320_110639_612.png](../killfeed_screenshots/killfeed_20260320_110639_612.png), **craft, canvas 480, stack=True**, warmup 1, repeats 10, cache cleared each pass.
+File [benchmark_single_110639.json](../benchmark_single_110639.json): image [bench_parse_10repeats_one_row.png](../assets/screenshots/bench_parse_10repeats_one_row.png) (single visible row, Vanilka→hookill in the logged run).
 
 - Median **parse** per image: **~33.3 ms**
 - Median **total** per image: **~35.9 ms**
@@ -102,7 +102,7 @@ Same **3 images** kf3 and reference [**benchmark_reference_kf3.json**](../benchm
 Repeat command:
 
 ```bash
-python benchmark_killfeed_ocr.py --images killfeed_screenshots/killfeed_20260320_110428_934.png killfeed_screenshots/killfeed_20260320_110237_631.png killfeed_screenshots/killfeed_20260319_193915_057.png --reference benchmark_reference_kf3.json --engines easyocr tesseract both --repeats 5 --warmup 1 --out benchmark_kf3_engines.json --csv bench_kf3_engines.csv
+python benchmark_killfeed_ocr.py --images assets/screenshots/bench_kf3_extra_row_vs_single_ref.png assets/screenshots/bench_kf3_single_ally_kill.png assets/screenshots/bench_kf3_single_mixed_case_names.png --reference benchmark_reference_kf3.json --engines easyocr tesseract both --repeats 5 --warmup 1 --out benchmark_kf3_engines.json --csv bench_kf3_engines.csv
 ```
 
 Summary (median **parse** aggregated over 3 frames / **per image**; `mean_reference_accuracy` vs [benchmark_reference_kf3.json](../benchmark_reference_kf3.json)):
@@ -151,7 +151,7 @@ To force CPU-only EasyOCR, use **`--cpu`** on the benchmark or set **`CUDA_VISIB
 Single-file example:
 
 ```bash
-python valorant_killfeed_tracker.py --image killfeed_screenshots/YOUR.png --no-show --ocr-engine easyocr --easyocr-canvas-size 480 --easyocr-detect-network craft
+python valorant_killfeed_tracker.py --image assets/screenshots/YOUR.png --no-show --ocr-engine easyocr --easyocr-canvas-size 480 --easyocr-detect-network craft
 ```
 
 **DBNet (`dbnet18`):** on Windows without **CUDA_HOME** and **MSVC (`cl`)**, deformable-conv extensions usually do not build; this repo defaults to **CRAFT**. For dbnet18, install the full toolchain and use `--easyocr-detect-network dbnet18` (see [README](../README.md)).

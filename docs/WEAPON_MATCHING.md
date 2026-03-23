@@ -34,7 +34,7 @@ python scripts/match_killfeed_weapon.py path/to/screenshot.png \
   --scales 0.25,0.35,0.45 \
   --min-score 0.25 \
   --min-class-margin 0.011 \
-  --draw assets/processed/debug_weapon_match.png
+  --draw assets/debug_weapon_match.png
 ```
 
 | Parameter | Suggested value | Role |
@@ -49,7 +49,7 @@ python scripts/match_killfeed_weapon.py path/to/screenshot.png \
 **Config files:**
 
 - `config/killfeed_row_bands.json` — `row_bands_frac` aligned to ROI height (see `_comment` in file).
-- `config/weapon_templates.json` — map weapon id → PNG path (silhouette / alpha mask; see `process_weapon_icon.py`).
+- `config/weapon_templates.json` — map weapon id → PNG path (silhouette / alpha mask; see `process_weapon_icon.py`). Shipped templates live under **`assets/icons/`**.
 
 ## Tuning guide
 

@@ -33,16 +33,16 @@ Use ``--only-weapon Vandal`` to drop rows where another gun wins.
 
 Examples:
 
-  python scripts/match_killfeed_weapon.py killfeed_screenshots/foo.png \\
-      --template assets/processed/Vandal_icon_template.png
+  python scripts/match_killfeed_weapon.py assets/screenshots/foo.png \\
+      --template assets/icons/Vandal_killfeed.png
 
-  python scripts/match_killfeed_weapon.py screen.png -t assets/processed/Vandal_template.png \\
+  python scripts/match_killfeed_weapon.py screen.png -t assets/icons/Vandal_killfeed.png \\
       --killfeed-rect 80,1300,600,180 --draw out_debug.png
 
   python scripts/match_killfeed_weapon.py strip.png -t Vandal.png --no-crop
 
-  python scripts/match_killfeed_weapon.py killfeed_screenshots/killfeed_20260319_193608_606.png \\
-      -t assets/processed/Vandal_icon_template.png --within-kill-rows --draw /tmp/hits.png
+  python scripts/match_killfeed_weapon.py assets/screenshots/bench_kf6_two_rows_spaced_nicknames.png \\
+      -t assets/icons/Vandal_killfeed.png --within-kill-rows --draw /tmp/hits.png
 
   python scripts/match_killfeed_weapon.py screen.png -t Vandal_template.png \\
       --row-bands-json config/killfeed_row_bands.json --center-frac 0.35 --draw /tmp/hits.png
@@ -302,7 +302,7 @@ def expand_x_slice_to_min_width(sx0: int, sx1: int, strip_w: int, min_w: int) ->
 def load_templates_json(path: Path) -> dict[str, tuple[np.ndarray, np.ndarray]]:
     """
     JSON object: weapon id (string) → path to silhouette PNG (relative to the JSON file
-    unless absolute). Example: ``{\"Vandal\": \"../assets/processed/Vandal_icon_template.png\"}``.
+    unless absolute). Example: ``{\"Vandal\": \"../assets/icons/Vandal_killfeed.png\"}``.
     """
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))

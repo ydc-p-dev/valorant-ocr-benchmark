@@ -62,7 +62,7 @@ def main() -> None:
     parser.add_argument(
         "--input-dir",
         type=str,
-        default="killfeed_screenshots",
+        default="temp/screenshots",
         help="Folder with full-screen screenshots.",
     )
     parser.add_argument(
