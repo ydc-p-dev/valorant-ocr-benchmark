@@ -1,0 +1,8 @@
+{
+  "_comment": "Y from killfeed ROI dump (0=top). H=180: row1 16-50, row2 55-88, row3 94-127.",
+  "row_bands_frac": [
+    [0.0889, 0.2778],
+    [0.3056, 0.4889],
+    [0.5222, 0.7056]
+  ]
+}

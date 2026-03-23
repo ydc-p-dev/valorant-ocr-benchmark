@@ -1,0 +1,9 @@
+{
+  "_comment": "Vertical bands inside the killfeed ROI only. Each [y0, y1] is a fraction of ROI height (0 = top). Tune on your resolution/UI scale using --dump-roi then an image editor or a small probe script.",
+  "row_bands_frac": [
+    [0.02, 0.26],
+    [0.24, 0.50],
+    [0.48, 0.74],
+    [0.72, 0.98]
+  ]
+}
