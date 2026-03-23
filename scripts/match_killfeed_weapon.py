@@ -61,6 +61,7 @@ import json
 import math
 import sys
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 import cv2
@@ -74,6 +75,7 @@ from valorant_killfeed_tracker import (
     REGION_KILLFEED,
     crop_killfeed_region_if_possible,
     detect_killfeed_row_boxes,
+    load_row_bands_json,
     split_tall_killfeed_row_boxes,
 )
 
@@ -110,30 +112,6 @@ def apply_killfeed_rect(img: np.ndarray, rect: dict[str, int]) -> np.ndarray:
     rw = max(1, min(rect["width"], w - x))
     rh = max(1, min(rect["height"], h - y))
     return img[y : y + rh, x : x + rw]
-
-
-def load_row_bands_json(path: Path) -> list[tuple[float, float]]:
-    """Load ``row_bands_frac`` from JSON: list of [y0, y1] each in [0, 1] relative to ROI height."""
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except OSError as e:
-        raise SystemExit(f"Cannot read row bands file: {path} ({e})") from e
-    except json.JSONDecodeError as e:
-        raise SystemExit(f"Invalid JSON: {path}: {e}") from e
-    raw = data.get("row_bands_frac")
-    if raw is None:
-        raise SystemExit(f"JSON must contain 'row_bands_frac': list of [y0,y1] fractions: {path}")
-    if not isinstance(raw, list) or not raw:
-        raise SystemExit(f"'row_bands_frac' must be a non-empty list: {path}")
-    out: list[tuple[float, float]] = []
-    for i, item in enumerate(raw):
-        if not isinstance(item, (list, tuple)) or len(item) != 2:
-            raise SystemExit(f"row_bands_frac[{i}] must be [y0, y1]: {path}")
-        y0, y1 = float(item[0]), float(item[1])
-        if not (0 <= y0 < y1 <= 1.0):
-            raise SystemExit(f"row_bands_frac[{i}] need 0 <= y0 < y1 <= 1: got {y0}, {y1}")
-        out.append((y0, y1))
-    return out
 
 
 def patches_from_row_bands_frac(
@@ -574,6 +552,242 @@ def supplement_class_scores_from_gray(
             if v is not None and v > best:
                 best = v
         by_w[wname] = best
+
+
+@dataclass
+class WeaponHit:
+    """One weapon template match aligned to ``row_bands_frac`` index."""
+
+    band_index: int
+    weapon: str
+    x: int
+    y: int
+    w: int
+    h: int
+    score: float
+    scale: float
+    margin: float
+    vs_weapon: str
+
+
+@dataclass
+class WeaponMatchParams:
+    """Defaults tuned with ``config/killfeed_row_bands.json`` + multi-template JSON."""
+
+    center_frac: float = 0.35
+    scales: str = "0.25,0.35,0.45"
+    min_score: float = 0.25
+    min_class_margin: float = 0.011
+    min_weapons_for_classify: int = 1
+    supplement_class_scores: bool = True
+    only_weapon: str | None = None
+    classify_radius_px: float = 0.0
+    max_matches: int = 8
+    peak_nms_frac: float = 0.28
+    merge_dist_frac: float = 0.42
+    weapon_anchor_x_frac: float = 0.62
+    classify_vote_min_x_frac: float = 0.42
+    weapon_white_slot: bool = True
+    weapon_white_thr: int = 205
+    weapon_slot_pad: int = 14
+    weapon_slot_cx_min_frac: float = 0.14
+    weapon_slot_cx_max_frac: float = 0.86
+
+
+def match_weapons_in_roi_bands(
+    roi_bgr: np.ndarray,
+    bands: list[tuple[float, float]],
+    templates_json: Path,
+    params: WeaponMatchParams | None = None,
+    band_active: list[bool] | None = None,
+) -> list[WeaponHit | None]:
+    """
+    Run weapon template matching once per row band (same geometry as OCR with fixed bands).
+    Returns a list parallel to ``bands`` (``None`` if that row did not pass classification gates).
+
+    If ``band_active`` is set (same length as bands / patches), inactive bands skip template work
+    (e.g. empty killfeed slots over map background).
+    """
+    p = params or WeaponMatchParams()
+    gray = cv2.cvtColor(roi_bgr, cv2.COLOR_BGR2GRAY)
+    roi_h, roi_w = gray.shape[:2]
+    patches, _ = patches_from_row_bands_frac(gray, bands, p.center_frac, roi_w, roi_h)
+    templates = load_templates_json(templates_json.resolve())
+    scales = [float(s.strip()) for s in p.scales.split(",") if s.strip()]
+    multitpl = len(templates) > 1
+    classify_r = float(p.classify_radius_px)
+    if classify_r <= 0:
+        classify_r = max(28.0, 0.06 * float(roi_w))
+    only_w = p.only_weapon.strip() if p.only_weapon else None
+    weapon_anchor_frac = max(0.35, min(0.85, float(p.weapon_anchor_x_frac)))
+    vote_min_x_frac = float(p.classify_vote_min_x_frac)
+
+    def classify_row_patch(
+        patch_hits: list[HitTagged],
+        *,
+        base_x: int,
+        strip_w: int,
+        anchor_x: int,
+        anchor_y: int,
+        vote_x_frac: float,
+        ncc_radius: float | None = None,
+        match_gray: np.ndarray | None = None,
+        supplement_gray: np.ndarray | None = None,
+    ) -> list[tuple[str, int, int, int, int, float, float, float, str]]:
+        r = classify_r if ncc_radius is None else ncc_radius
+        out: list[tuple[str, int, int, int, int, float, float, float, str]] = []
+        vxf = max(0.0, min(0.85, float(vote_x_frac)))
+        by_w = max_scores_by_weapon_right_of_strip(
+            patch_hits,
+            base_x=base_x,
+            strip_w=strip_w,
+            min_center_x_frac=vxf,
+        )
+        if not by_w:
+            by_w = max_scores_by_weapon_near(patch_hits, anchor_x, anchor_y, r)
+        if not by_w:
+            return out
+        peaks_by_w = dict(by_w)
+        if multitpl and match_gray is not None and p.supplement_class_scores:
+            gray_sup = supplement_gray if supplement_gray is not None else match_gray
+            supplement_class_scores_from_gray(by_w, gray_sup, templates, scales)
+        if multitpl and len(by_w) < max(1, int(p.min_weapons_for_classify)):
+            return out
+        if multitpl:
+            win_w, win_s = max(peaks_by_w.items(), key=lambda kv: kv[1])
+            others = [wid for wid in templates if wid != win_w]
+            if others:
+                sec_w, sec_s = max(((w, by_w.get(w, 0.0)) for w in others), key=lambda kv: kv[1])
+            else:
+                sec_w, sec_s = "", 0.0
+            margin = (win_s - sec_s) if sec_w else 0.0
+        else:
+            ranked = sorted(by_w.items(), key=lambda kv: kv[1], reverse=True)
+            win_w, win_s = ranked[0]
+            sec_w, sec_s = ranked[1] if len(ranked) > 1 else ("", 0.0)
+            margin = (win_s - sec_s) if sec_w else 0.0
+
+        if win_s < p.min_score:
+            return out
+        if multitpl and p.min_class_margin > 0:
+            need_m = float(p.min_class_margin)
+            if margin < need_m:
+                if not (win_s >= 0.982 and margin >= need_m - 0.00085):
+                    return out
+        if only_w is not None and win_w != only_w:
+            return out
+
+        geom = best_geometry_for_weapon(patch_hits, win_w, anchor_x, anchor_y, r)
+        if geom is None:
+            x_cut = base_x + int(round(strip_w * max(0.15, min(0.85, vxf))))
+            right_only = [
+                h for h in patch_hits if h[0] == win_w and h[1] + h[3] // 2 >= x_cut
+            ]
+            geom = max(right_only, key=lambda h: h[5]) if right_only else None
+        if geom is None:
+            same_id = [h for h in patch_hits if h[0] == win_w]
+            geom = max(same_id, key=lambda h: h[5]) if same_id else None
+        if geom is None:
+            return out
+        w_g, x, y, tw, th, sc_geom, sc_fn = geom
+        out.append((w_g, x, y, tw, th, sc_geom, sc_fn, margin, sec_w))
+        return out
+
+    hits_out: list[WeaponHit | None] = [None] * len(patches)
+    if not patches:
+        return hits_out
+
+    inner_cap = max(p.max_matches, 8, 32)
+    use_white_slot = bool(p.weapon_white_slot) and len(patches) > 1
+
+    for band_i, (search_gray, base_x, base_y) in enumerate(patches):
+        if band_active is not None and band_i < len(band_active) and not band_active[band_i]:
+            continue
+        strip_w, strip_h = search_gray.shape[1], search_gray.shape[0]
+        slot_slice: tuple[int, int] | None = None
+        if use_white_slot:
+            Hs, Ws = strip_h, strip_w
+            min_a = max(35, int(Hs * Ws * 0.0015))
+            max_a = min(12000, int(Hs * Ws * 0.12))
+            slot_slice = white_weapon_slot_x_slice(
+                search_gray,
+                white_thr=p.weapon_white_thr,
+                cx_min_frac=p.weapon_slot_cx_min_frac,
+                cx_max_frac=p.weapon_slot_cx_max_frac,
+                min_area=min_a,
+                max_area=max_a,
+                min_aspect=1.12,
+                max_aspect=7.5,
+                min_h_frac=0.26,
+                max_h_frac=0.99,
+                pad_px=max(0, p.weapon_slot_pad),
+            )
+        if slot_slice is not None:
+            sx0, sx1 = slot_slice
+            min_tw, _min_th = min_slot_dims_for_all_templates(templates, scales)
+            if strip_w >= min_tw:
+                sx0, sx1 = expand_x_slice_to_min_width(sx0, sx1, strip_w, min_tw)
+            match_gray = search_gray[:, sx0:sx1]
+            eff_base_x = base_x + sx0
+            eff_w = sx1 - sx0
+            anchor_x = eff_base_x + eff_w // 2
+            vote_xf = 0.06
+            half_diag = math.hypot(float(eff_w) * 0.5, float(strip_h) * 0.5)
+            local_r = max(
+                14.0,
+                half_diag * 0.98,
+                min(float(classify_r), 0.25 * float(strip_w)),
+            )
+        else:
+            match_gray = search_gray
+            eff_base_x = base_x
+            eff_w = strip_w
+            anchor_x = base_x + int(round(strip_w * weapon_anchor_frac))
+            vote_xf = vote_min_x_frac
+            local_r = None
+
+        anchor_y = base_y + strip_h // 2
+        patch_hits: list[HitTagged] = []
+        for wname, (templ, mask) in templates.items():
+            for sc in scales:
+                for x, y, tw, th, score, sc2 in match_at_scale(
+                    match_gray,
+                    templ,
+                    mask,
+                    sc,
+                    min_score=p.min_score,
+                    max_matches=inner_cap,
+                    min_dist_frac=p.peak_nms_frac,
+                ):
+                    patch_hits.append((wname, eff_base_x + x, base_y + y, tw, th, score, sc2))
+
+        row_hits = classify_row_patch(
+            patch_hits,
+            base_x=eff_base_x,
+            strip_w=eff_w,
+            anchor_x=anchor_x,
+            anchor_y=anchor_y,
+            vote_x_frac=vote_xf,
+            ncc_radius=local_r,
+            match_gray=match_gray,
+            supplement_gray=search_gray,
+        )
+        if row_hits:
+            t0 = row_hits[0]
+            hits_out[band_i] = WeaponHit(
+                band_index=band_i,
+                weapon=t0[0],
+                x=t0[1],
+                y=t0[2],
+                w=t0[3],
+                h=t0[4],
+                score=t0[5],
+                scale=t0[6],
+                margin=t0[7],
+                vs_weapon=t0[8],
+            )
+
+    return hits_out
 
 
 def main() -> None:

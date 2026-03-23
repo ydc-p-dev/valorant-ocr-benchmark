@@ -226,6 +226,7 @@ killfeed_screenshots/*
 !killfeed_screenshots/killfeed_20260319_193712_526.png
 overlay_stats.txt
 killfeed_events.json
+killfeed_parse.json
 analysis_timings.jsonl
 offline_killfeed_index.jsonl
 offline_killfeed_index.csv

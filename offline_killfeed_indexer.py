@@ -142,7 +142,7 @@ def main() -> None:
             if has_candidate and not near_duplicate:
                 kept_candidates += 1
                 if not args.skip_ocr:
-                    events, _, timing = process_frame(
+                    events, _, timing, _masks = process_frame(
                         roi,
                         now=time.time(),
                         recent_pairs=None,

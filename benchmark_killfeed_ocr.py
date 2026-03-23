@@ -127,7 +127,7 @@ def _run_dataset_once(
     now = time.time()
     for p in paths:
         frame = vkt.crop_killfeed_region_if_possible(vkt.load_bgr(p))
-        events, _boxes, timing = vkt.process_frame(
+        events, _boxes, timing, _masks = vkt.process_frame(
             frame, now, recent_pairs=None, draw=None, ocr_engine=ocr_engine
         )
         parse_sum += float(timing["t_parse_ms_total"])

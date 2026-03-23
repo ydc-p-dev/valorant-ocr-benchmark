@@ -39,6 +39,12 @@ Text recognition on name regions.
 ### **4. Python logic**
 Deduplication of repeated killer→victim pairs within a short window, timing logs.
 
+### **5. Weapon icon matching (optional)**
+Multi-template masked NCC for killfeed weapon silhouettes: [`docs/WEAPON_MATCHING.md`](docs/WEAPON_MATCHING.md).
+
+### **6. Unified parser (names + weapons)**
+[`parse_killfeed.py`](parse_killfeed.py) — one pass per `row_bands_frac` row: OCR + optional templates (writes `killfeed_parse.json`).
+
 ---
 
 ## How it works (high level)
@@ -126,7 +132,7 @@ python valorant_killfeed_tracker.py --folder ./shots --no-show
 python valorant_killfeed_tracker.py --image path/to/screenshot.png --ocr-engine both
 ```
 
-`--ocr-engine`: `tesseract` (default) | `easyocr` | `both`
+`--ocr-engine`: `easyocr` (default) | `tesseract` | `both`
 
 **EasyOCR performance:** smaller detection canvas (`EASYOCR_CANVAS_SIZE`), detector **CRAFT** by default (portable on GPU), optional **dbnet18** via `--easyocr-detect-network dbnet18`, and **one stacked** `readtext` when several rows need OCR. GPU still matters: install PyTorch with CUDA.
 

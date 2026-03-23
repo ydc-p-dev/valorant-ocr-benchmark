@@ -127,7 +127,7 @@ MAX_STORED_EVENTS = 80
 OCR_PSM_LINE = "--psm 7"  # single text line
 OCR_UPSCALE = 2
 OCR_CHAR_WHITELIST = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_#"
-DEFAULT_OCR_ENGINE = "tesseract"  # tesseract | easyocr | both
+DEFAULT_OCR_ENGINE = "easyocr"  # tesseract | easyocr | both
 
 # EasyOCR: one readtext() per killfeed row (left+right names) instead of two — much faster live.
 EASYOCR_ONE_PASS = True
@@ -177,6 +177,12 @@ class KillfeedEvent:
     raw_left: str
     raw_right: str
     t: float
+    weapon: str | None = None
+    weapon_score: float | None = None
+    weapon_margin: float | None = None
+    weapon_vs: str | None = None
+    row_band_index: int | None = None
+    active: bool = True
 
 
 def normalize_ocr_text(text: str) -> str:
@@ -737,6 +743,107 @@ def detect_green_row_boxes(frame: np.ndarray) -> tuple[list[tuple[int, int, int,
     return boxes, mask
 
 
+def green_red_masks_bgr(frame: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Morphology-cleaned green / red HSV masks for the killfeed ROI (full ``frame`` size)."""
+    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+    green_mask = cv2.inRange(hsv, GREEN_LOW, GREEN_HIGH)
+    red_mask_1 = cv2.inRange(hsv, RED_LOW_1, RED_HIGH_1)
+    red_mask_2 = cv2.inRange(hsv, RED_LOW_2, RED_HIGH_2)
+    red_mask = cv2.bitwise_or(red_mask_1, red_mask_2)
+    kernel = np.ones((5, 5), np.uint8)
+    green_mask = cv2.morphologyEx(green_mask, cv2.MORPH_OPEN, kernel, iterations=1)
+    green_mask = cv2.morphologyEx(green_mask, cv2.MORPH_CLOSE, kernel, iterations=1)
+    red_mask = cv2.morphologyEx(red_mask, cv2.MORPH_OPEN, kernel, iterations=1)
+    red_mask = cv2.morphologyEx(red_mask, cv2.MORPH_CLOSE, kernel, iterations=1)
+    return green_mask, red_mask
+
+
+def load_row_bands_json(path: Path) -> list[tuple[float, float]]:
+    """Load ``row_bands_frac`` from JSON: list of [y0, y1] in [0, 1] relative to ROI height (0=top)."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except OSError as e:
+        raise SystemExit(f"Cannot read row bands file: {path} ({e})") from e
+    except json.JSONDecodeError as e:
+        raise SystemExit(f"Invalid JSON: {path}: {e}") from e
+    raw = data.get("row_bands_frac")
+    if raw is None:
+        raise SystemExit(f"JSON must contain 'row_bands_frac': list of [y0,y1] fractions: {path}")
+    if not isinstance(raw, list) or not raw:
+        raise SystemExit(f"'row_bands_frac' must be a non-empty list: {path}")
+    out: list[tuple[float, float]] = []
+    for i, item in enumerate(raw):
+        if not isinstance(item, (list, tuple)) or len(item) != 2:
+            raise SystemExit(f"row_bands_frac[{i}] must be [y0, y1]: {path}")
+        y0, y1 = float(item[0]), float(item[1])
+        if not (0 <= y0 < y1 <= 1.0):
+            raise SystemExit(f"row_bands_frac[{i}] need 0 <= y0 < y1 <= 1: got {y0}, {y1}")
+        out.append((y0, y1))
+    return out
+
+
+def infer_band_color_from_masks(
+    green_mask: np.ndarray,
+    red_mask: np.ndarray,
+    y0: int,
+    y1: int,
+) -> str:
+    """Pick ``green`` vs ``red`` for a horizontal band from HSV highlight density."""
+    g = int(cv2.countNonZero(green_mask[y0:y1, :]))
+    r = int(cv2.countNonZero(red_mask[y0:y1, :]))
+    if g == 0 and r == 0:
+        return "red"
+    tie = 1.08
+    if g >= r * tie:
+        return "green"
+    if r >= g * tie:
+        return "red"
+    return "green" if g >= r else "red"
+
+
+def killfeed_row_band_is_active(
+    green_mask: np.ndarray,
+    red_mask: np.ndarray,
+    y0: int,
+    y1: int,
+    frame_w: int,
+    *,
+    min_abs: int = 280,
+    min_frac: float = 0.001,
+) -> bool:
+    """
+    True if the horizontal strip likely contains a Valorant killfeed highlight (green/red bar).
+
+    When fixed ``row_bands_frac`` slots sit over empty map/background, green+red HSV counts are
+    tiny; skip OCR / weapon work for those bands.
+    """
+    g = int(cv2.countNonZero(green_mask[y0:y1, :]))
+    r = int(cv2.countNonZero(red_mask[y0:y1, :]))
+    area = max(1, (y1 - y0) * frame_w)
+    need = max(int(min_abs), int(area * min_frac))
+    return (g + r) >= need
+
+
+def fixed_row_boxes_from_bands(
+    frame: np.ndarray,
+    bands: list[tuple[float, float]],
+) -> tuple[list[tuple[int, int, int, int, str]], dict[str, np.ndarray]]:
+    """
+    Build full-width row boxes from fractional Y bands (same convention as weapon matcher).
+    Row color comes from green vs red mask counts inside each band (no contour detection).
+    """
+    roi_h, roi_w = frame.shape[:2]
+    green_mask, red_mask = green_red_masks_bgr(frame)
+    masks = {"green": green_mask, "red": red_mask}
+    rows: list[tuple[int, int, int, int, str]] = []
+    for y0f, y1f in bands:
+        y0 = min(roi_h - 2, max(0, int(roi_h * y0f)))
+        y1 = min(roi_h, max(y0 + 2, int(round(roi_h * y1f))))
+        color = infer_band_color_from_masks(green_mask, red_mask, y0, y1)
+        rows.append((0, y0, roi_w, y1 - y0, color))
+    return rows, masks
+
+
 def detect_killfeed_row_boxes(
     frame: np.ndarray,
 ) -> tuple[list[tuple[int, int, int, int, str]], dict[str, np.ndarray]]:
@@ -745,17 +852,7 @@ def detect_killfeed_row_boxes(
     - green rows (typically own-team-related side)
     - red rows (typically enemy-team-related side)
     """
-    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-    green_mask = cv2.inRange(hsv, GREEN_LOW, GREEN_HIGH)
-    red_mask_1 = cv2.inRange(hsv, RED_LOW_1, RED_HIGH_1)
-    red_mask_2 = cv2.inRange(hsv, RED_LOW_2, RED_HIGH_2)
-    red_mask = cv2.bitwise_or(red_mask_1, red_mask_2)
-
-    kernel = np.ones((5, 5), np.uint8)
-    green_mask = cv2.morphologyEx(green_mask, cv2.MORPH_OPEN, kernel, iterations=1)
-    green_mask = cv2.morphologyEx(green_mask, cv2.MORPH_CLOSE, kernel, iterations=1)
-    red_mask = cv2.morphologyEx(red_mask, cv2.MORPH_OPEN, kernel, iterations=1)
-    red_mask = cv2.morphologyEx(red_mask, cv2.MORPH_CLOSE, kernel, iterations=1)
+    green_mask, red_mask = green_red_masks_bgr(frame)
 
     rows: list[tuple[int, int, int, int, str]] = []
     for color_name, mask in (("green", green_mask), ("red", red_mask)):
@@ -817,22 +914,43 @@ def process_frame(
     draw: np.ndarray | None = None,
     ocr_engine: str = DEFAULT_OCR_ENGINE,
     show_debug_windows: bool = True,
-) -> tuple[list[KillfeedEvent], list[tuple[int, int, int, int, str]], dict]:
+    row_bands_frac: list[tuple[float, float]] | None = None,
+) -> tuple[
+    list[KillfeedEvent],
+    list[tuple[int, int, int, int, str]],
+    dict,
+    dict[str, np.ndarray],
+]:
     """
     Parse all killfeed rows in frame.
     If recent_pairs is not None, skip duplicate (killer, victim) within DUPLICATE_PAIR_COOLDOWN.
+
+    If ``row_bands_frac`` is set (from ``config/killfeed_row_bands.json``), row geometry follows
+    those Y fractions of ROI height instead of HSV contour detection (aligns with weapon matcher).
+
+    Returns ``(events, boxes, timing, masks)``. Use :func:`save_killfeed_debug_images` with the
+    annotated ROI copy to write PNGs when ``--debug-dir`` is set.
     """
     t_total_0 = time.perf_counter()
 
     t_detect_0 = time.perf_counter()
-    boxes, masks = detect_killfeed_row_boxes(frame)
-    boxes = split_tall_killfeed_row_boxes(boxes)
+    if row_bands_frac is not None:
+        boxes, masks = fixed_row_boxes_from_bands(frame, row_bands_frac)
+        detect_src = "fixed_bands"
+    else:
+        boxes, masks = detect_killfeed_row_boxes(frame)
+        boxes = split_tall_killfeed_row_boxes(boxes)
+        detect_src = "hsv_contours"
     detect_ms = (time.perf_counter() - t_detect_0) * 1000.0
 
     events: list[KillfeedEvent] = []
     ocr_row_cache_hits = 0
 
     frame_h, frame_w = frame.shape[:2]
+    if draw is not None:
+        for bx, by, bw, bh, _ in boxes:
+            cv2.rectangle(draw, (bx, by), (bx + bw, by + bh), (80, 80, 80), 1)
+
     row_work: list[dict] = []
     for (x, y, w, h, row_color) in boxes:
         ex, ey, ew, eh = expand_row_box(x, y, w, h, frame_w, frame_h)
@@ -952,6 +1070,7 @@ def process_frame(
     timing = {
         "t_total_ms": (time.perf_counter() - t_total_0) * 1000.0,
         "t_detect_ms": detect_ms,
+        "row_detect_mode": detect_src,
         "t_parse_ms_total": parse_ms_total,
         "rows_detected": len(boxes),
         "rows_green": sum(1 for b in boxes if b[4] == "green"),
@@ -970,7 +1089,66 @@ def process_frame(
         except cv2.error:
             pass
 
-    return events, boxes, timing
+    return events, boxes, timing, masks
+
+
+def save_killfeed_debug_images(
+    out_dir: Path,
+    base_name: str,
+    *,
+    annotated_bgr: np.ndarray | None,
+    masks: dict[str, np.ndarray],
+    footer_line: str | None = None,
+    mode_tag: str | None = None,
+) -> list[Path]:
+    """
+    Write annotated ROI (boxes + OCR labels), per-channel HSV masks, and a side-by-side mask preview.
+    Filenames: ``{base_name}_annotated.png``, ``_mask_green.png``, ``_mask_red.png``, ``_masks_sidebyside.png``.
+    """
+    out_dir.mkdir(parents=True, exist_ok=True)
+    written: list[Path] = []
+    safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in base_name)[:120]
+
+    if annotated_bgr is not None:
+        vis = annotated_bgr.copy()
+        if mode_tag:
+            cv2.putText(
+                vis,
+                mode_tag[:80],
+                (4, 18),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.45,
+                (0, 255, 255),
+                1,
+                cv2.LINE_AA,
+            )
+        if footer_line:
+            draw_status_footer(vis, footer_line)
+        p = out_dir / f"{safe}_annotated.png"
+        cv2.imwrite(str(p), vis)
+        written.append(p)
+
+    g = masks.get("green")
+    r = masks.get("red")
+    if g is not None:
+        p = out_dir / f"{safe}_mask_green.png"
+        cv2.imwrite(str(p), g)
+        written.append(p)
+    if r is not None:
+        p = out_dir / f"{safe}_mask_red.png"
+        cv2.imwrite(str(p), r)
+        written.append(p)
+    if g is not None and r is not None and g.shape == r.shape:
+        gh = cv2.cvtColor(g, cv2.COLOR_GRAY2BGR)
+        rh = cv2.cvtColor(r, cv2.COLOR_GRAY2BGR)
+        cv2.putText(gh, "green HSV", (4, 16), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 1, cv2.LINE_AA)
+        cv2.putText(rh, "red HSV", (4, 16), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 0, 255), 1, cv2.LINE_AA)
+        combo = np.hstack([gh, rh])
+        p = out_dir / f"{safe}_masks_sidebyside.png"
+        cv2.imwrite(str(p), combo)
+        written.append(p)
+
+    return written
 
 
 def load_bgr(path: str | Path) -> np.ndarray:
@@ -995,7 +1173,13 @@ def save_outputs(events_log: list[KillfeedEvent]) -> None:
             f.write(f"Last: {e.killer} -> {e.victim}  ({e.row_color})")
 
 
-def run_static_images(paths: list[Path], show: bool, ocr_engine: str) -> None:
+def run_static_images(
+    paths: list[Path],
+    show: bool,
+    ocr_engine: str,
+    row_bands_frac: list[tuple[float, float]] | None = None,
+    debug_dir: Path | None = None,
+) -> None:
     all_events: list[KillfeedEvent] = []
     warm_easyocr_for_session(ocr_engine)
 
@@ -1003,9 +1187,15 @@ def run_static_images(paths: list[Path], show: bool, ocr_engine: str) -> None:
         full = load_bgr(p)
         frame = crop_killfeed_region_if_possible(full)
         now = time.time()
-        preview = frame.copy() if show else None
-        events, _, timing = process_frame(
-            frame, now, recent_pairs=None, draw=preview, ocr_engine=ocr_engine
+        need_draw = show or debug_dir is not None
+        preview = frame.copy() if need_draw else None
+        events, _, timing, masks = process_frame(
+            frame,
+            now,
+            recent_pairs=None,
+            draw=preview,
+            ocr_engine=ocr_engine,
+            row_bands_frac=row_bands_frac,
         )
         all_events.extend(events)
         for e in events:
@@ -1022,6 +1212,20 @@ def run_static_images(paths: list[Path], show: bool, ocr_engine: str) -> None:
             }
         )
 
+        if debug_dir is not None and preview is not None:
+            footer = describe_ocr_compute_backend(ocr_engine)
+            tag = f"{timing.get('row_detect_mode', '?')} rows={timing.get('rows_detected', 0)}"
+            out_paths = save_killfeed_debug_images(
+                debug_dir,
+                p.stem,
+                annotated_bgr=preview,
+                masks=masks,
+                footer_line=footer,
+                mode_tag=tag,
+            )
+            if out_paths:
+                print(f"Debug PNG -> {out_paths[0].parent} ({len(out_paths)} file(s), {p.name})")
+
         if show and preview is not None:
             draw_status_footer(preview, describe_ocr_compute_backend(ocr_engine))
             try:
@@ -1035,7 +1239,13 @@ def run_static_images(paths: list[Path], show: bool, ocr_engine: str) -> None:
     print(f"\nWrote {OVERLAY_TXT} and {EVENTS_JSON} ({len(all_events)} row(s) total).")
 
 
-def run_live(ocr_engine: str, use_gui: bool, save_fullscreen: bool) -> None:
+def run_live(
+    ocr_engine: str,
+    use_gui: bool,
+    save_fullscreen: bool,
+    row_bands_frac: list[tuple[float, float]] | None = None,
+    debug_dir: Path | None = None,
+) -> None:
     recent_pairs: list[tuple[str, str, float]] = []
     events_log: list[KillfeedEvent] = []
     last_screenshot_time = 0.0
@@ -1043,6 +1253,8 @@ def run_live(ocr_engine: str, use_gui: bool, save_fullscreen: bool) -> None:
     screenshot_dir = Path(SCREENSHOT_DIR)
     if save_fullscreen:
         screenshot_dir.mkdir(parents=True, exist_ok=True)
+    if debug_dir is not None:
+        debug_dir.mkdir(parents=True, exist_ok=True)
 
     gui = use_gui and opencv_highgui_available()
     if use_gui and not gui:
@@ -1058,22 +1270,25 @@ def run_live(ocr_engine: str, use_gui: bool, save_fullscreen: bool) -> None:
         else:
             print("Killfeed parser running headless (no preview). Stop with Ctrl+C.")
         print(f"Fullscreen screenshots: {'on' if save_fullscreen else 'off'} -> {SCREENSHOT_DIR}")
+        if debug_dir is not None:
+            print(f"Killfeed debug PNGs (on OCR events): {debug_dir.resolve()}")
         time.sleep(1)
         warm_easyocr_for_session(ocr_engine)
 
         while True:
             frame_idx += 1
             shot = np.ascontiguousarray(np.array(sct.grab(REGION_KILLFEED))[:, :, :3])
-            display = shot.copy() if gui else None
+            display = shot.copy() if (gui or debug_dir is not None) else None
             now = time.time()
 
-            events, _, timing = process_frame(
+            events, _, timing, masks = process_frame(
                 shot,
                 now,
                 recent_pairs=recent_pairs,
                 draw=display,
                 ocr_engine=ocr_engine,
                 show_debug_windows=gui,
+                row_bands_frac=row_bands_frac,
             )
 
             for e in events:
@@ -1090,6 +1305,17 @@ def run_live(ocr_engine: str, use_gui: bool, save_fullscreen: bool) -> None:
                 if saved:
                     print(f"Screenshot saved: {saved}")
                 last_screenshot_time = now
+
+            if debug_dir is not None and display is not None and events:
+                stamp = time.strftime("%Y%m%d_%H%M%S") + f"_{frame_idx:06d}"
+                save_killfeed_debug_images(
+                    debug_dir,
+                    f"live_{stamp}",
+                    annotated_bgr=display,
+                    masks=masks,
+                    footer_line=describe_ocr_compute_backend(ocr_engine),
+                    mode_tag=f"{timing.get('row_detect_mode', '?')} ev={len(events)}",
+                )
 
             save_outputs(events_log)
 
@@ -1177,6 +1403,22 @@ def main() -> None:
         metavar="TOP,LEFT,WIDTH,HEIGHT",
         help="Override REGION_KILLFEED for this run (full-monitor coordinates), e.g. 80,1300,600,180",
     )
+    parser.add_argument(
+        "--row-bands-json",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="Fixed horizontal row strips as fractions of ROI height (key row_bands_frac). "
+        "Matches weapon script config, e.g. config/killfeed_row_bands.json — skips HSV row contours.",
+    )
+    parser.add_argument(
+        "--debug-dir",
+        type=Path,
+        default=None,
+        metavar="DIR",
+        help="Save debug PNGs: annotated killfeed ROI (gray=all detected rows, green/red=OCR boxes), "
+        "plus green/red HSV masks. Static: one set per input image. Live: when at least one event is emitted.",
+    )
     args = parser.parse_args()
 
     global REGION_KILLFEED, EASYOCR_CANVAS_SIZE, EASYOCR_STACK_ROWS, _easyocr_detect_network
@@ -1199,6 +1441,13 @@ def main() -> None:
         _easyocr_detect_network = args.easyocr_detect_network
         _easyocr_invalidate_reader()
 
+    row_bands_frac: list[tuple[float, float]] | None = None
+    if args.row_bands_json is not None:
+        row_bands_frac = load_row_bands_json(args.row_bands_json.resolve())
+        print(f"Row layout: {len(row_bands_frac)} fixed band(s) from {args.row_bands_json}")
+
+    debug_dir = args.debug_dir.resolve() if args.debug_dir is not None else None
+
     print(f"OCR / compute: {describe_ocr_compute_backend(args.ocr_engine)}")
     if args.ocr_engine in ("easyocr", "both"):
         if easyocr is None:
@@ -1210,20 +1459,34 @@ def main() -> None:
             )
 
     if args.image:
-        run_static_images([Path(args.image)], show=not args.no_show, ocr_engine=args.ocr_engine)
+        run_static_images(
+            [Path(args.image)],
+            show=not args.no_show,
+            ocr_engine=args.ocr_engine,
+            row_bands_frac=row_bands_frac,
+            debug_dir=debug_dir,
+        )
         return
     if args.folder:
         folder = Path(args.folder)
         paths = collect_image_paths(folder)
         if not paths:
             raise SystemExit(f"No images found in {folder}")
-        run_static_images(paths, show=not args.no_show, ocr_engine=args.ocr_engine)
+        run_static_images(
+            paths,
+            show=not args.no_show,
+            ocr_engine=args.ocr_engine,
+            row_bands_frac=row_bands_frac,
+            debug_dir=debug_dir,
+        )
         return
 
     run_live(
         ocr_engine=args.ocr_engine,
         use_gui=not args.no_gui,
         save_fullscreen=args.fullscreen_screenshots,
+        row_bands_frac=row_bands_frac,
+        debug_dir=debug_dir,
     )
 
 
